@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>PC Building Simulator Mobile 2.0 - Декор и Стекло</title>
+    <style>
+        :root {
+            --primary: #00ffcc;
+            --bg-dark: rgba(15, 20, 30, 0.9);
+            --bg-panel: rgba(25, 35, 50, 0.95);
+            --text: #e0e0e0;
+            --danger: #ff4444;
+            --success: #00cc66;
+            --accent: #ff007f;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: #000;
+            color: var(--text);
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        #game-container, #canvas-container, #ui-layer, #touch-zones {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+        }
+        
+        #canvas-container { z-index: 1; }
+        #ui-layer { z-index: 10; pointer-events: none; }
+        #touch-zones { display: flex; z-index: 5; pointer-events: auto; }
+        #move-zone, #look-zone { width: 50%; height: 100%; }
+
+        .top-bar {
+            position: absolute; top: env(safe-area-inset-top, 10px); left: env(safe-area-inset-left, 10px); right: env(safe-area-inset-right, 10px);
+            display: flex; justify-content: space-between; background: rgba(0, 0, 0, 0.65); padding: 10px 20px;
+            border-radius: 10px; pointer-events: auto; backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.1);
+        }
+        .stat { font-size: 15px; font-weight: bold; }
+        .stat span { color: var(--primary); }
+
+        #joystick-base {
+            position: absolute; width: 120px; height: 120px;
+            background: rgba(255, 255, 255, 0.1); border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%; bottom: 40px; left: 40px; display: none; pointer-events: none;
+        }
+        #joystick-thumb {
+            position: absolute; width: 50px; height: 50px; background: rgba(0, 255, 204, 0.6);
+            border-radius: 50%; top: 35px; left: 35px; box-shadow: 0 0 10px var(--primary);
+        }
+
+        #crosshair {
+            position: absolute; top: 50%; left: 50%; width: 8px; height: 8px; background: white;
+            border-radius: 50%; transform: translate(-50%, -50%); z-index: 10; opacity: 0.6; transition: all 0.2s;
+        }
+        #crosshair.active { width: 14px; height: 14px; background: var(--primary); opacity: 1; box-shadow: 0 0 10px var(--primary); }
+
+        .action-buttons {
+            position: absolute; bottom: 30px; right: env(safe-area-inset-right, 30px);
+            display: flex; flex-direction: column; gap: 15px; pointer-events: auto; z-index: 10;
+        }
+        .btn {
+            background: rgba(0, 0, 0, 0.7); border: 2px solid rgba(255, 255, 255, 0.2); color: white;
+            padding: 14px 22px; border-radius: 25px; font-size: 15px; font-weight: bold;
+            text-transform: uppercase; box-shadow: 0 4px 10px rgba(0,0,0,0.5); backdrop-filter: blur(5px); transition: 0.15s;
+        }
+        .btn:active { background: var(--primary); color: black; transform: scale(0.95); }
+        .btn-interact { border-color: var(--primary); color: var(--primary); }
+
+        .window {
+            position: absolute; top: 5%; left: 5%; width: 90%; height: 90%;
+            background: var(--bg-panel); border: 1px solid var(--primary); border-radius: 12px;
+            display: none; flex-direction: column; pointer-events: auto; z-index: 100; box-shadow: 0 0 30px rgba(0, 0, 0, 0.9); backdrop-filter: blur(12px);
+        }
+        .window-header { padding: 15px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); display: flex; justify-content: space-between; align-items: center; background: rgba(0, 0, 0, 0.4); border-radius: 12px 12px 0 0; }
+        .window-content { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+        .close-btn { background: var(--danger); border: none; color: white; width: 32px; height: 32px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+
+        .tabs { display: flex; gap: 5px; margin-bottom: 10px; }
+        .tab { padding: 10px; background: rgba(0,0,0,0.5); border: 1px solid #444; color: white; flex: 1; text-align: center; border-radius: 6px; font-size: 14px; }
+        .tab.active { background: var(--primary); color: black; border-color: var(--primary); font-weight: bold; }
+
+        .list-item { display: flex; justify-content: space-between; align-items: center; background: rgba(0, 0, 0, 0.4); padding: 12px; border-radius: 8px; border-left: 4px solid #666; }
+        .list-item h4 { color: var(--primary); margin-bottom: 4px; }
+        .list-item.cpu { border-left-color: #3498db; }
+        .list-item.mb { border-left-color: #9b59b6; }
+        .list-item.ram { border-left-color: #2ecc71; }
+        .list-item.gpu { border-left-color: #e74c3c; }
+        .list-item.storage { border-left-color: #f1c40f; }
+        .list-item.psu { border-left-color: #e67e22; }
+
+        .btn-small { padding: 8px 14px; font-size: 13px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; }
+        .btn-buy { background: #2ecc71; color: black; }
+        .btn-action { background: var(--primary); color: black; }
+
+        .builder-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .slot { background: rgba(0,0,0,0.5); border: 1px dashed #555; padding: 12px; border-radius: 8px; text-align: center; cursor: pointer; transition: 0.2s; }
+        .slot.filled { border-style: solid; border-color: var(--primary); background: rgba(0,255,204,0.05); }
+        .slot h3 { font-size: 13px; color: #888; margin-bottom: 6px; }
+        .slot.filled h3 { color: var(--text); }
+
+        #notification {
+            position: absolute; top: 60px; left: 50%; transform: translateX(-50%); background: rgba(0, 0, 0, 0.85);
+            border: 1px solid var(--primary); padding: 12px 24px; border-radius: 20px; color: white; font-weight: bold; z-index: 1000; opacity: 0; transition: opacity 0.3s; pointer-events: none; text-align: center; box-shadow: 0 0 15px rgba(0,255,204,0.3);
+        }
+        #notification.show { opacity: 1; }
+        #notification.error { border-color: var(--danger); color: var(--danger); box-shadow: 0 0 15px rgba(255,68,68,0.3); }
+        #notification.success { border-color: var(--success); color: var(--success); box-shadow: 0 0 15px rgba(0,204,102,0.3); }
+
+        #os-screen { background: #050b14; color: #00ffcc; font-family: 'Courier New', Courier, monospace; border-radius: 6px; padding: 15px; height: 100%; }
+        .boot-line { margin-bottom: 6px; font-size: 14px; }
+
+        #install-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7);
+            z-index: 500; display: none; justify-content: center; align-items: center; flex-direction: column; gap: 15px; backdrop-filter: blur(5px);
+        }
+        .progress-bar { width: 250px; height: 12px; background: #222; border-radius: 6px; overflow: hidden; border: 1px solid var(--primary); }
+        .progress-fill { width: 0%; height: 100%; background: var(--primary); transition: width 0.1s linear; }
+
+        #orientation-warning {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: black; color: white; z-index: 9999;
+            display: flex; justify-content: center; align-items: center; text-align: center; font-size: 20px; padding: 20px;
+        }
+        @media (orientation: landscape) { #orientation-warning { display: none; } }
+    </style>
+</head>
+<body>
+    <div id="orientation-warning">Пожалуйста, поверните устройство горизонтально (Landscape).</div>
+    <div id="game-container">
+        <div id="canvas-container"></div>
+        <div id="touch-zones">
+            <div id="move-zone"></div>
+            <div id="look-zone"></div>
+        </div>
+        <div id="joystick-base"><div id="joystick-thumb"></div></div>
+        
+        <div id="ui-layer">
+            <div class="top-bar">
+                <div class="stat">💰 <span id="ui-money">950</span>$</div>
+                <div class="stat">⭐ Ур: <span id="ui-level">1</span> (<span id="ui-xp">0</span> XP)</div>
+                <div class="stat">📦 Заказы: <span id="ui-orders">0</span></div>
+            </div>
+            <div id="crosshair"></div>
+            <div class="action-buttons">
+                <div class="btn btn-interact" id="btn-interact" style="display: none;">ОСМОТРЕТЬ</div>
+                <div class="btn" id="btn-menu">МЕНЮ</div>
+            </div>
+            <div id="notification">Сообщение</div>
+        </div>
+
+        <div id="install-overlay">
+            <h3 id="install-status-text" style="color: var(--primary);">Установка компонента...</h3>
+            <div class="progress-bar"><div class="progress-fill" id="install-progress"></div></div>
+        </div>
+
+        <div class="window" id="win-computer">
+            <div class="window-header">
+                <h2>TerminalOS v2.0 - Рабочий Терминал</h2>
+                <button class="close-btn" onclick="UI.closeWindow('win-computer')">X</button>
+            </div>
+            <div class="tabs">
+                <div class="tab active" onclick="UI.switchComputerTab('orders')">Заказы</div>
+                <div class="tab" onclick="UI.switchComputerTab('shop')">Магазин</div>
+                <div class="tab" onclick="UI.switchComputerTab('inventory')">Склад</div>
+            </div>
+            <div class="window-content" id="computer-content"></div>
+        </div>
+
+        <div class="window" id="win-builder">
+            <div class="window-header">
+                <h2>Сборочный Верстак</h2>
+                <button class="close-btn" onclick="UI.closeWindow('win-builder')">X</button>
+            </div>
+            <div class="window-content">
+                <div class="builder-grid">
+                    <div class="slot" id="slot-case" onclick="Builder.openInventorySelect('case')"><h3>Корпус</h3><p>Пусто</p></div>
+                    <div class="slot" id="slot-mb" onclick="Builder.openInventorySelect('mb')"><h3>Материнская плата</h3><p>Пусто</p></div>
+                    <div class="slot" id="slot-cpu" onclick="Builder.openInventorySelect('cpu')"><h3>Процессор (CPU)</h3><p>Пусто</p></div>
+                    <div class="slot" id="slot-cooler" onclick="Builder.openInventorySelect('cooler')"><h3>Кулер ЦП</h3><p>Пусто</p></div>
+                    <div class="slot" id="slot-ram" onclick="Builder.openInventorySelect('ram')"><h3>ОЗУ (RAM)</h3><p>Пусто</p></div>
+                    <div class="slot" id="slot-gpu" onclick="Builder.openInventorySelect('gpu')"><h3>Видеокарта (GPU)</h3><p>Пусто</p></div>
+                    <div class="slot" id="slot-storage" onclick="Builder.openInventorySelect('storage')"><h3>Накопитель</h3><p>Пусто</p></div>
+                    <div class="slot" id="slot-psu" onclick="Builder.openInventorySelect('psu')"><h3>Блок питания</h3><p>Пусто</p></div>
+                </div>
+                <hr style="border-color: #333; margin: 10px 0;">
+                <button class="btn btn-action" onclick="Builder.bootPC()" style="width: 100%;">ТЕСТ И БЕНЧМАРК</button>
+                <button class="btn" onclick="Builder.deliverPC()" style="width: 100%; background: #2ecc71; color: black; margin-top: 10px;">ОТПРАВИТЬ КЛИЕНТУ</button>
+            </div>
+        </div>
+
+        <div class="window" id="win-select-item" style="z-index: 105; width: 80%; left: 10%; height: 80%; top: 10%;">
+            <div class="window-header">
+                <h2 id="select-item-title">Выберите деталь</h2>
+                <button class="close-btn" onclick="UI.closeWindow('win-select-item')">X</button>
+            </div>
+            <div class="window-content" id="select-item-list"></div>
+        </div>
+
+        <div class="window" id="win-os">
+            <div class="window-content" id="os-screen"></div>
+        </div>
+
+        <div class="window" id="win-menu" style="width: 320px; left: 50%; top: 50%; transform: translate(-50%, -50%); height: auto;">
+            <div class="window-header">
+                <h2>Настройки</h2>
+                <button class="close-btn" onclick="UI.closeWindow('win-menu')">X</button>
+            </div>
+            <div class="window-content">
+                <button class="btn btn-action" onclick="Game.save()">Сохранить игру</button>
+                <button class="btn btn-action" onclick="Game.reset()">Сбросить прогресс</button>
+                <hr style="border-color: #333;">
+                <p>Графика:</p>
+                <div class="tabs">
+                    <div class="tab active" id="btn-gfx-low" onclick="Engine.setGraphics('low')">Низк.</div>
+                    <div class="tab" id="btn-gfx-high" onclick="Engine.setGraphics('high')">Высок.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        // === БАЗА ДАННЫХ (Сбалансированные цены и характеристики) ===
+        const DB = {
+            cpu: [
+                { id: 'cpu_1', name: 'Intel Celeron G5905', socket: 'LGA1200', perf: 100, price: 35, power: 58 },
+                { id: 'cpu_2', name: 'Intel Core i3-10100F', socket: 'LGA1200', perf: 300, price: 65, power: 65 },
+                { id: 'cpu_3', name: 'AMD Ryzen 5 3600', socket: 'AM4', perf: 500, price: 110, power: 65 },
+                { id: 'cpu_4', name: 'Intel Core i7-12700K', socket: 'LGA1700', perf: 900, price: 280, power: 125 },
+                { id: 'cpu_5', name: 'AMD Ryzen 9 5950X', socket: 'AM4', perf: 1200, price: 480, power: 105 }
+            ],
+            mb: [
+                { id: 'mb_1', name: 'H410M (Intel)', socket: 'LGA1200', perf: 10, price: 40, power: 20 },
+                { id: 'mb_2', name: 'B450 TOMAHAWK (AMD)', socket: 'AM4', perf: 20, price: 70, power: 30 },
+                { id: 'mb_3', name: 'Z690 PRO (Intel)', socket: 'LGA1700', perf: 40, price: 140, power: 40 },
+                { id: 'mb_4', name: 'X570 AORUS (AMD)', socket: 'AM4', perf: 45, price: 170, power: 40 }
+            ],
+            ram: [
+                { id: 'ram_1', name: '4GB DDR4 2400MHz', size: 4, perf: 50, price: 15, power: 5 },
+                { id: 'ram_2', name: '8GB DDR4 3200MHz', size: 8, perf: 120, price: 30, power: 10 },
+                { id: 'ram_3', name: '16GB DDR4 3600MHz', size: 16, perf: 250, price: 55, power: 15 },
+                { id: 'ram_4', name: '16GB DDR4 RGB', size: 16, perf: 260, price: 65, power: 18 },
+                { id: 'ram_5', name: '32GB DDR5 5200MHz', size: 32, perf: 500, price: 120, power: 20 },
+                { id: 'ram_6', name: '64GB DDR5 RGB', size: 64, perf: 1100, price: 240, power: 25 }
+            ],
+            gpu: [
+                { id: 'gpu_0', name: 'Встроенное ядро', perf: 30, price: 0, power: 0 },
+                { id: 'gpu_1', name: 'GT 1030 2GB', perf: 80, price: 50, power: 30 },
+                { id: 'gpu_2', name: 'GTX 1060 6GB', perf: 220, price: 95, power: 120 },
+                { id: 'gpu_3', name: 'GTX 1650 4GB', perf: 250, price: 120, power: 75 },
+                { id: 'gpu_4', name: 'RTX 2060 6GB', perf: 450, price: 170, power: 160 },
+                { id: 'gpu_5', name: 'RTX 3060 12GB', perf: 600, price: 240, power: 170 },
+                { id: 'gpu_6', name: 'RTX 4070 12GB', perf: 1300, price: 450, power: 200 },
+                { id: 'gpu_7', name: 'RX 7900 XTX 24GB', perf: 1700, price: 700, power: 355 },
+                { id: 'gpu_8', name: 'RTX 4090 24GB', perf: 2200, price: 1100, power: 450 }
+            ],
+            storage: [
+                { id: 'hdd_1', name: '500GB HDD', size: 500, perf: 30, price: 20, power: 10 },
+                { id: 'ssd_1', name: '256GB SATA SSD', size: 256, perf: 100, price: 30, power: 5 },
+                { id: 'ssd_2', name: '1TB NVMe M.2 SSD', size: 1000, perf: 400, price: 70, power: 8 },
+                { id: 'ssd_3', name: '2TB NVMe Gen4', size: 2000, perf: 700, price: 160, power: 10 }
+            ],
+            psu: [
+                { id: 'psu_1', name: '400W Basic', wattage: 400, perf: 0, price: 25, power: 0 },
+                { id: 'psu_2', name: '600W Bronze', wattage: 600, perf: 0, price: 45, power: 0 },
+                { id: 'psu_3', name: '850W Gold', wattage: 850, perf: 0, price: 90, power: 0 },
+                { id: 'psu_4', name: '1200W Platinum', wattage: 1200, perf: 0, price: 170, power: 0 }
+            ],
+            cooler: [
+                { id: 'cool_1', name: 'Боксовый кулер', perf: 20, price: 10, power: 5 },
+                { id: 'cool_2', name: 'Башенный кулер', perf: 60, price: 30, power: 10 },
+                { id: 'cool_3', name: 'СВО 240мм (Водянка)', perf: 120, price: 80, power: 20 }
+            ],
+            case: [
+                { id: 'case_1', name: 'Офисный черный корпус', perf: 0, price: 20, power: 0 },
+                { id: 'case_2', name: 'Игровой корпус со стеклом', perf: 0, price: 50, power: 0 },
+                { id: 'case_3', name: 'Премиум Full Tower', perf: 0, price: 120, power: 0 }
+            ]
+        };
+
+        function getItem(type, id) { return DB[type].find(i => i.id === id); }
+
+        // === АУДИОСИСТЕМА ===
+        const AudioSys = {
+            ctx: null,
+            init() { window.AudioContext = window.AudioContext || window.webkitAudioContext; this.ctx = new AudioContext(); },
+            playTone(freq, type, duration, vol=0.1) {
+                if(!this.ctx) return;
+                const osc = this.ctx.createOscillator(); const gain = this.ctx.createGain();
+                osc.type = type; osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                gain.gain.setValueAtTime(vol, this.ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + duration);
+                osc.connect(gain); gain.connect(this.ctx.destination);
+                osc.start(); osc.stop(this.ctx.currentTime + duration);
+            },
+            uiClick() { this.playTone(600, 'sine', 0.08, 0.05); },
+            buy() { this.playTone(800, 'square', 0.1, 0.05); setTimeout(()=>this.playTone(1200, 'square', 0.15, 0.05), 80); },
+            error() { this.playTone(150, 'sawtooth', 0.25, 0.1); },
+            success() { this.playTone(523.25, 'sine', 0.1); setTimeout(()=>this.playTone(659.25, 'sine', 0.15), 100); setTimeout(()=>this.playTone(783.99, 'sine', 0.2), 200); },
+            installSequence() {
+                this.playTone(250, 'triangle', 0.08, 0.1);
+                setTimeout(() => {
+                    for(let i=0; i<5; i++) {
+                        setTimeout(() => this.playTone(1200 - i*100, 'sawtooth', 0.04, 0.03), i*40);
+                    }
+                }, 120);
+                setTimeout(() => this.playTone(400, 'sine', 0.1, 0.08), 350);
+            },
+            bootBeep() { this.playTone(1000, 'sine', 0.2, 0.1); }
+        };
+
+        const State = {
+            money: 950, level: 1, xp: 0,
+            inventory: { case: ['case_1'], mb: [], cpu: [], cooler: [], ram: [], gpu: ['gpu_0'], storage: [], psu: [] },
+            orders: [], activeOrder: null,
+            pcOnDesk: { case: null, mb: null, cpu: null, cooler: null, ram: null, gpu: null, storage: null, psu: null, tested: false, score: 0 }
+        };
+
+        // === ЗАКАЗЫ (Повышена прибыль и вознаграждения) ===
+        const ORDER_TEMPLATES = [
+            { client: "Школьник Макс", desc: "Бро, мне нужен комп, чтобы CS2 не лагала! Бюджет $500.", reqPrice: 500, minScore: 600, reward: 350, xp: 250 },
+            { client: "Бабушка Галина", desc: "Здравствуйте! Внучок просит ПК для учебы. Бюджет $750.", reqPrice: 750, minScore: 900, reward: 500, xp: 350 },
+            { client: "Офис-менеджер Олег", desc: "Срочно! Тачка под 1С и Chrome. Рабочая лошадка.", reqPrice: 300, minScore: 300, reward: 220, xp: 180 },
+            { client: "Стримерша Kiki", desc: "Нужен ПК для стримов Genshin и Cyberpunk. Бюджет $1800.", reqPrice: 1800, minScore: 2400, reward: 1100, xp: 850 },
+            { client: "Майнер Семеныч", desc: "Здорово. Нужен мощный БП и видеокарта. Оплата хорошая.", reqPrice: 1200, minScore: 1600, reward: 750, xp: 500 }
+        ];
+
+        const Game = {
+            init() { this.load(); this.generateOrdersIfNeeded(); UI.updateTopBar(); },
+            addMoney(amount) { State.money += amount; UI.updateTopBar(); },
+            addXp(amount) {
+                State.xp += amount; let needed = State.level * 800;
+                if(State.xp >= needed) {
+                    State.xp -= needed; State.level++;
+                    UI.notify(`Уровень повышен! Новый уровень: ${State.level}`, 'success'); AudioSys.success();
+                }
+                UI.updateTopBar(); this.save();
+            },
+            buyItem(type, id) {
+                const item = getItem(type, id);
+                if(State.money >= item.price) {
+                    State.money -= item.price; State.inventory[type].push(id);
+                    UI.notify(`Куплено: ${item.name}`, 'success'); AudioSys.buy(); UI.updateTopBar(); this.save(); UI.renderShop();
+                } else { UI.notify('Недостаточно денег!', 'error'); AudioSys.error(); }
+            },
+            generateOrdersIfNeeded() {
+                if(State.orders.length < 4) {
+                    let available = ORDER_TEMPLATES.filter(t => t.reqPrice <= State.level * 800 + 600);
+                    while(State.orders.length < 4 && available.length > 0) {
+                        let t = available[Math.floor(Math.random() * available.length)];
+                        State.orders.push({ id: Math.random().toString(36).substr(2, 9), client: t.client, desc: t.desc, budget: t.reqPrice + t.reward, minScore: t.minScore, reward: t.reward, xp: t.xp });
+                    }
+                }
+            },
+            acceptOrder(id) {
+                State.activeOrder = State.orders.find(o => o.id === id);
+                State.orders = State.orders.filter(o => o.id !== id);
+                UI.notify('Заказ принят в работу!'); AudioSys.uiClick(); UI.renderOrders(); this.save();
+            },
+            save() { localStorage.setItem('pcSimSave_v2', JSON.stringify(State)); UI.notify('Прогресс сохранен'); },
+            load() { const data = localStorage.getItem('pcSimSave_v2'); if(data) Object.assign(State, JSON.parse(data)); },
+            reset() { localStorage.removeItem('pcSimSave_v2'); location.reload(); }
+        };
+
+        const Builder = {
+            openInventorySelect(type) {
+                AudioSys.uiClick();
+                document.getElementById('select-item-title').innerText = `Деталь: ${type.toUpperCase()}`;
+                const list = document.getElementById('select-item-list'); list.innerHTML = '';
+
+                if(State.pcOnDesk[type] !== null) {
+                    const btn = document.createElement('button');
+                    btn.className = 'btn btn-action'; btn.style.width = '100%'; btn.style.marginBottom = '10px'; btn.innerText = 'Демонтировать текущую деталь';
+                    btn.onclick = () => {
+                        if (State.pcOnDesk[type] !== 'gpu_0') State.inventory[type].push(State.pcOnDesk[type]); 
+                        State.pcOnDesk[type] = null; State.pcOnDesk.tested = false;
+                        Engine.updatePCVisuals();
+                        UI.closeWindow('win-select-item'); UI.renderBuilder();
+                    };
+                    list.appendChild(btn);
+                }
+
+                if(State.inventory[type].length === 0) { list.innerHTML += `<p style="padding: 10px; color: #888;">На складе нет деталей этого типа.</p>`; } 
+                else {
+                    let counts = {}; State.inventory[type].forEach(id => counts[id] = (counts[id] || 0) + 1);
+                    for(let id in counts) {
+                        const item = getItem(type, id); const div = document.createElement('div'); div.className = `list-item ${type}`;
+                        let info = `${item.perf ? 'Мощность: '+item.perf : ''} ${item.power ? '| Потребление: '+item.power+'W' : ''} ${item.wattage ? 'БП: '+item.wattage+'W' : ''} ${item.socket ? 'Сокет: '+item.socket : ''}`;
+                        div.innerHTML = `<div><h4>${item.name} (x${counts[id]})</h4><div style="font-size:12px; color:gray;">${info}</div></div><button class="btn-small btn-action">Установить</button>`;
+                        div.querySelector('button').onclick = () => this.installPartAnimated(type, id); list.appendChild(div);
+                    }
+                }
+                UI.openWindow('win-select-item');
+            },
+            installPartAnimated(type, id) {
+                const item = getItem(type, id);
+                if(type !== 'case' && State.pcOnDesk.case === null) { UI.notify('Сначала поставьте Корпус!', 'error'); AudioSys.error(); return; }
+                if((type === 'cpu' || type === 'ram' || type === 'gpu') && State.pcOnDesk.mb === null) { UI.notify('Сначала установите Материнскую плату!', 'error'); AudioSys.error(); return; }
+                if(type === 'cpu' && State.pcOnDesk.mb !== null) { const mb = getItem('mb', State.pcOnDesk.mb); if(item.socket !== mb.socket) { UI.notify(`Несовместимо! Сокет CPU: ${item.socket}, Плата: ${mb.socket}`, 'error'); AudioSys.error(); return; } }
+
+                UI.closeWindow('win-select-item'); UI.closeWindow('win-builder');
+                
+                const overlay = document.getElementById('install-overlay');
+                const progress = document.getElementById('install-progress');
+                document.getElementById('install-status-text').innerText = `Установка: ${item.name}`;
+                overlay.style.display = 'flex'; progress.style.width = '0%';
+
+                let p = 0; AudioSys.installSequence();
+                Engine.triggerInstallAnimation(type);
+
+                let interval = setInterval(() => {
+                    p += 10; progress.style.width = p + '%';
+                    if(p >= 100) {
+                        clearInterval(interval);
+                        overlay.style.display = 'none';
+
+                        if(State.pcOnDesk[type] !== null && State.pcOnDesk[type] !== 'gpu_0') State.inventory[type].push(State.pcOnDesk[type]);
+                        if (id !== 'gpu_0') { const idx = State.inventory[type].indexOf(id); State.inventory[type].splice(idx, 1); }
+
+                        State.pcOnDesk[type] = id; State.pcOnDesk.tested = false;
+                        Engine.updatePCVisuals();
+                        UI.openWindow('win-builder'); UI.renderBuilder(); Game.save();
+                        UI.notify(`Установлено: ${item.name}`, 'success');
+                    }
+                }, 40);
+            },
+            checkCompleteness() {
+                const req = ['case', 'mb', 'cpu', 'cooler', 'ram', 'gpu', 'storage', 'psu'];
+                let missing = []; for(let r of req) { if(State.pcOnDesk[r] === null) missing.push(r); }
+                return missing;
+            },
+            bootPC() {
+                const missing = this.checkCompleteness();
+                if(missing.length > 0) { UI.notify(`Не хватает деталей: ${missing.join(', ')}`, 'error'); AudioSys.error(); return; }
+
+                let totalPower = 0;
+                ['cpu', 'mb', 'ram', 'gpu', 'storage', 'cooler'].forEach(t => { totalPower += getItem(t, State.pcOnDesk[t]).power || 0; });
+                const psu = getItem('psu', State.pcOnDesk.psu);
+                
+                if(totalPower > psu.wattage) { UI.notify(`Перегрузка БП! Потребление ${totalPower}W, Мощность ${psu.wattage}W`, 'error'); AudioSys.error(); return; }
+
+                UI.closeWindow('win-builder'); UI.openWindow('win-os'); AudioSys.bootBeep();
+                Engine.setPCRGB(true);
+                
+                const os = document.getElementById('os-screen'); os.innerHTML = '';
+                const lines = ["BOOTING TerminalOS v2.0...", "CPU: " + getItem('cpu', State.pcOnDesk.cpu).name, "RAM: " + getItem('ram', State.pcOnDesk.ram).name, "GPU: " + getItem('gpu', State.pcOnDesk.gpu).name, "Checking System Integrity... OK", "Running Benchmark..."];
+                lines.forEach((line, i) => { setTimeout(() => { os.innerHTML += `<div class="boot-line">${line}</div>`; }, 400 * i); });
+
+                setTimeout(() => {
+                    let score = 0;
+                    ['cpu', 'mb', 'ram', 'gpu', 'storage', 'cooler'].forEach(t => { score += getItem(t, State.pcOnDesk[t]).perf || 0; });
+                    score = Math.floor(score * 1.15); State.pcOnDesk.score = score; State.pcOnDesk.tested = true; Game.save();
+                    os.innerHTML += `<div class="boot-line" style="color:#0ff; margin-top: 15px; font-weight:bold;">=== BENCHMARK COMPLETED ===</div><div class="boot-line" style="font-size: 18px; color:#00ffcc;">Результат: ${score} PTS</div><button class="btn btn-action" style="margin-top:20px;" onclick="UI.closeWindow('win-os'); Engine.setPCRGB(false); UI.openWindow('win-builder');">Завершить тест</button>`;
+                    AudioSys.success();
+                }, 400 * lines.length + 1200);
+            },
+            deliverPC() {
+                if(!State.activeOrder) { UI.notify('У вас нет активного заказа!', 'error'); AudioSys.error(); return; }
+                const missing = this.checkCompleteness();
+                if(missing.length > 0) { UI.notify('Сборка не завершена!', 'error'); AudioSys.error(); return; }
+                if(!State.pcOnDesk.tested) { UI.notify('Сначала протестируйте ПК!', 'error'); AudioSys.error(); return; }
+
+                if(State.pcOnDesk.score >= State.activeOrder.minScore) {
+                    Game.addMoney(State.activeOrder.budget); Game.addXp(State.activeOrder.xp);
+                    UI.notify(`Заказ выполнен! Получено ${State.activeOrder.budget}$`, 'success');
+                    for(let k in State.pcOnDesk) { if(k !== 'tested' && k !== 'score') State.pcOnDesk[k] = null; }
+                    State.pcOnDesk.tested = false; State.pcOnDesk.score = 0; State.activeOrder = null;
+                    Engine.updatePCVisuals();
+                    Game.generateOrdersIfNeeded(); Game.save(); UI.closeWindow('win-builder');
+                } else { UI.notify(`ПК слишком слабый! Нужно: ${State.activeOrder.minScore} PTS, у вас: ${State.pcOnDesk.score}`, 'error'); AudioSys.error(); }
+            }
+        };
+
+        const UI = {
+            currentComputerTab: 'orders',
+            init() { if(!AudioSys.ctx) AudioSys.init(); },
+            updateTopBar() { document.getElementById('ui-money').innerText = State.money; document.getElementById('ui-level').innerText = State.level; document.getElementById('ui-xp').innerText = State.xp; document.getElementById('ui-orders').innerText = State.activeOrder ? '1 (Активен)' : State.orders.length; },
+            notify(msg, type='info') { const el = document.getElementById('notification'); el.innerText = msg; el.className = type === 'error' ? 'error show' : type === 'success' ? 'success show' : 'show'; setTimeout(() => el.classList.remove('show'), 3000); },
+            openWindow(id) { document.getElementById(id).style.display = 'flex'; Controls.locked = true; },
+            closeWindow(id) { document.getElementById(id).style.display = 'none'; Controls.locked = false; },
+            switchComputerTab(tab) {
+                AudioSys.uiClick(); this.currentComputerTab = tab;
+                document.querySelectorAll('#win-computer .tab').forEach(t => t.classList.remove('active')); event.target.classList.add('active');
+                if(tab === 'shop') this.renderShop(); else if(tab === 'inventory') this.renderInventory(); else if(tab === 'orders') this.renderOrders();
+            },
+            renderShop() {
+                const content = document.getElementById('computer-content'); content.innerHTML = '<h3>Онлайн-Магазин</h3>';
+                const cats = [{key: 'case', name: 'Корпуса'}, {key: 'mb', name: 'Материнские платы'}, {key: 'cpu', name: 'Процессоры'}, {key: 'cooler', name: 'Кулеры'}, {key: 'ram', name: 'Оперативная память'}, {key: 'gpu', name: 'Видеокарты'}, {key: 'storage', name: 'Накопители'}, {key: 'psu', name: 'Блоки питания'}];
+                cats.forEach(cat => {
+                    content.innerHTML += `<h4 style="margin-top:10px; color:#aaa;">${cat.name}</h4>`;
+                    DB[cat.key].forEach(item => {
+                        if(item.id === 'gpu_0') return;
+                        const canBuy = State.money >= item.price;
+                        content.innerHTML += `<div class="list-item ${cat.key}"><div><h4>${item.name}</h4><div style="font-size:12px; color:gray;">Цена: ${item.price}$ | Мощь: ${item.perf||0}</div></div><button class="btn-small btn-buy" style="opacity: ${canBuy ? 1 : 0.5}" onclick="Game.buyItem('${cat.key}', '${item.id}')">${item.price}$ Купить</button></div>`;
+                    });
+                });
+            },
+            renderInventory() {
+                const content = document.getElementById('computer-content'); content.innerHTML = '<h3>Ваш Склад</h3>'; let empty = true;
+                for(let type in State.inventory) {
+                    let filtered = State.inventory[type].filter(i => i !== 'gpu_0');
+                    if(filtered.length > 0) {
+                        empty = false; let counts = {}; filtered.forEach(id => counts[id] = (counts[id] || 0) + 1);
+                        content.innerHTML += `<h4 style="margin-top:10px; color:#aaa; text-transform:uppercase;">${type}</h4>`;
+                        for(let id in counts) { const item = getItem(type, id); content.innerHTML += `<div class="list-item ${type}"><div><h4>${item.name}</h4><div style="font-size:12px; color:gray;">В наличии: ${counts[id]} шт.</div></div></div>`; }
+                    }
+                }
+                if(empty) content.innerHTML += '<p style="color:gray;">Склад пуст. Купите детали в магазине!</p>';
+            },
+            renderOrders() {
+                const content = document.getElementById('computer-content'); content.innerHTML = '<h3>Заказы Клиентов</h3>';
+                if(State.activeOrder) {
+                    content.innerHTML += `<div style="background: rgba(0, 200, 100, 0.15); padding: 15px; border-radius: 8px; border: 1px solid #00cc66;"><h4 style="color: #00cc66;">АКТИВНЫЙ ЗАКАЗ: ${State.activeOrder.client}</h4><p style="margin: 8px 0;">${State.activeOrder.desc}</p><ul style="margin-left: 20px; font-size:13px; color:#ccc;"><li>Требуемые PTS: <b>${State.activeOrder.minScore}</b></li><li>Оплата: <b>${State.activeOrder.budget}$</b></li><li>Опыт: <b>${State.activeOrder.xp} XP</b></li></ul></div>`;
+                } else {
+                    State.orders.forEach(o => { content.innerHTML += `<div class="list-item"><div><h4>${o.client}</h4><p style="font-size:13px; margin: 6px 0; color:#ddd;">"${o.desc}"</p><div style="font-size:12px; color:#00ffcc;">Мин. Мощь: ${o.minScore} PTS | Бюджет: ${o.budget}$</div></div><button class="btn-small btn-action" onclick="Game.acceptOrder('${o.id}')">Взять заказ</button></div>`; });
+                }
+            },
+            renderBuilder() {
+                const slots = ['case', 'mb', 'cpu', 'cooler', 'ram', 'gpu', 'storage', 'psu'];
+                slots.forEach(s => {
+                    const el = document.getElementById(`slot-${s}`); const id = State.pcOnDesk[s];
+                    if(id) { const item = getItem(s, id); el.classList.add('filled'); el.querySelector('p').innerText = item.name; el.querySelector('p').style.color = '#00ffcc'; } 
+                    else { el.classList.remove('filled'); el.querySelector('p').innerText = 'Пусто'; el.querySelector('p').style.color = 'gray'; }
+                });
+            }
+        };
+
+        // === 3D ДВИЖОК ===
+        const Engine = {
+            scene: null, camera: null, renderer: null, interactables: [], colliders: [],
+            pcGroup: null, pcParts: {}, rgbLight: null,
+            init() {
+                const container = document.getElementById('canvas-container');
+                this.scene = new THREE.Scene(); 
+                this.scene.background = new THREE.Color(0x6e7f94); 
+                this.scene.fog = new THREE.Fog(0x6e7f94, 5, 18);
+
+                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+                this.camera.position.set(0, 1.6, 1.8);
+
+                this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+                this.renderer.setSize(window.innerWidth, window.innerHeight); 
+                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+                this.renderer.shadowMap.enabled = true; 
+                this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                container.appendChild(this.renderer.domElement);
+
+                this.addLights();
+                this.buildRoom(); 
+
+                window.addEventListener('resize', () => { 
+                    this.camera.aspect = window.innerWidth / window.innerHeight; 
+                    this.camera.updateProjectionMatrix(); 
+                    this.renderer.setSize(window.innerWidth, window.innerHeight); 
+                });
+            },
+            setGraphics(level) {
+                if(level === 'low') { 
+                    this.renderer.setPixelRatio(0.7); 
+                    this.renderer.shadowMap.enabled = false; 
+                    document.getElementById('btn-gfx-low').classList.add('active'); 
+                    document.getElementById('btn-gfx-high').classList.remove('active'); 
+                } else { 
+                    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); 
+                    this.renderer.shadowMap.enabled = true; 
+                    document.getElementById('btn-gfx-high').classList.add('active'); 
+                    document.getElementById('btn-gfx-low').classList.remove('active'); 
+                }
+            },
+            addLights() {
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+                this.scene.add(ambientLight);
+
+                const ceilingLight = new THREE.PointLight(0xfff5ea, 0.7, 14);
+                ceilingLight.position.set(0, 2.8, -1);
+                ceilingLight.castShadow = true;
+                this.scene.add(ceilingLight);
+            },
+            addCollider(mesh) { 
+                mesh.geometry.computeBoundingBox(); 
+                const box = new THREE.Box3().setFromObject(mesh); 
+                this.colliders.push(box); 
+            },
+            buildRoom() {
+                const wallMat = new THREE.MeshStandardMaterial({ color: 0x6e7f94, roughness: 0.7 }); 
+                const floorMat = new THREE.MeshStandardMaterial({ color: 0x22252a, roughness: 0.8 });
+                const rugMat = new THREE.MeshStandardMaterial({ color: 0xd32f2f, roughness: 0.9 }); 
+                const sofaMat = new THREE.MeshStandardMaterial({ color: 0x1565c0, roughness: 0.6 }); 
+                const woodMat = new THREE.MeshStandardMaterial({ color: 0x4a2e1b, roughness: 0.5 }); 
+                const metalMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.3, metalness: 0.7 });
+                const greenWindowMat = new THREE.MeshBasicMaterial({ color: 0x00e676 }); 
+
+                const room = new THREE.Mesh(new THREE.BoxGeometry(8, 3.2, 8), wallMat);
+                room.position.set(0, 1.6, 0); room.material.side = THREE.BackSide; room.receiveShadow = true;
+                this.scene.add(room);
+
+                const floor = new THREE.Mesh(new THREE.PlaneGeometry(8, 8), floorMat);
+                floor.rotation.x = -Math.PI / 2; floor.position.y = 0.01; floor.receiveShadow = true;
+                this.scene.add(floor);
+
+                const rug = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.02, 1.8), rugMat);
+                rug.position.set(-0.2, 0.02, -1.8); rug.receiveShadow = true;
+                this.scene.add(rug);
+
+                const sofaGroup = new THREE.Group();
+                const sofaSeat = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.45, 0.85), sofaMat);
+                sofaSeat.position.set(2.4, 0.23, -1.8); sofaSeat.castShadow = true; sofaSeat.receiveShadow = true;
+                sofaGroup.add(sofaSeat);
+
+                const sofaBack = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.5, 0.85), sofaMat);
+                sofaBack.position.set(3.4, 0.55, -1.8);
+                sofaGroup.add(sofaBack);
+                this.scene.add(sofaGroup);
+                this.addCollider(sofaSeat);
+
+                const shelf = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.04, 0.25), woodMat);
+                shelf.position.set(2.2, 2.0, -3.8); shelf.castShadow = true;
+                this.scene.add(shelf);
+
+                const bookMat1 = new THREE.MeshStandardMaterial({ color: 0x2980b9 });
+                const bookMat2 = new THREE.MeshStandardMaterial({ color: 0xc0392b });
+                const bookMat3 = new THREE.MeshStandardMaterial({ color: 0x27ae60 });
+                
+                const book1 = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.2, 0.15), bookMat1);
+                book1.position.set(1.8, 2.12, -3.8); book1.rotation.y = 0.1;
+                this.scene.add(book1);
+                
+                const book2 = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.22, 0.16), bookMat2);
+                book2.position.set(1.85, 2.13, -3.8);
+                this.scene.add(book2);
+                
+                const book3 = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.18, 0.14), bookMat3);
+                book3.position.set(1.91, 2.11, -3.8); book3.rotation.z = -0.15;
+                this.scene.add(book3);
+
+                const potMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.8 });
+                const plantMat = new THREE.MeshStandardMaterial({ color: 0x2ecc71, roughness: 0.5 });
+                const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.14, 0.3, 16), potMat);
+                pot.position.set(1.2, 0.15, -1.2); pot.castShadow = true;
+                this.scene.add(pot);
+                const plant = new THREE.Mesh(new THREE.SphereGeometry(0.25, 16, 16), plantMat);
+                plant.position.set(1.2, 0.4, -1.2); plant.castShadow = true;
+                this.scene.add(plant);
+
+                const posterMat = new THREE.MeshStandardMaterial({ color: 0x2c3e50, roughness: 0.5 });
+                const poster = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.2, 0.02), posterMat);
+                poster.position.set(-1.8, 2.0, -3.98); 
+                this.scene.add(poster);
+                const posterArt = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 1.0), new THREE.MeshBasicMaterial({ color: 0xe74c3c }));
+                posterArt.position.set(-1.8, 2.0, -3.96);
+                this.scene.add(posterArt);
+
+                const greenPanel = new THREE.Mesh(new THREE.BoxGeometry(0.02, 2.0, 1.4), greenWindowMat);
+                greenPanel.position.set(3.98, 1.6, 0.2);
+                this.scene.add(greenPanel);
+
+                const desk = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.08, 1.2), woodMat);
+                desk.position.set(-1.8, 0.9, -3.2); desk.castShadow = true; desk.receiveShadow = true;
+                this.scene.add(desk);
+
+                const leg1 = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.9, 1.1), metalMat);
+                leg1.position.set(-3.1, 0.45, -3.2); this.scene.add(leg1);
+                const leg2 = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.9, 1.1), metalMat);
+                leg2.position.set(-0.5, 0.45, -3.2); this.scene.add(leg2);
+                this.addCollider(desk);
+
+                const mugMat = new THREE.MeshStandardMaterial({ color: 0xff4444, roughness: 0.2 });
+                const mug = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.1, 16), mugMat);
+                mug.position.set(-1.4, 0.99, -3.5); mug.castShadow = true;
+                this.scene.add(mug);
+
+                const binMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.9 });
+                const bin = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.12, 0.4, 16), binMat);
+                bin.position.set(-1.2, 0.2, -3.0);
+                this.scene.add(bin);
+
+                const chair = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.1, 0.55), metalMat);
+                chair.position.set(-1.8, 0.5, -2.2); this.scene.add(chair);
+                const chairBack = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.6, 0.08), metalMat);
+                chairBack.position.set(-1.8, 0.8, -1.92); this.scene.add(chairBack);
+
+                const kb = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.02, 0.16), metalMat);
+                kb.position.set(-2.0, 0.95, -2.9); this.scene.add(kb);
+                const mouse = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.03, 0.12), metalMat);
+                mouse.position.set(-1.4, 0.95, -2.9); this.scene.add(mouse);
+
+                const monStand = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.1, 0.25, 12), metalMat);
+                monStand.position.set(-2.2, 1.05, -3.4); this.scene.add(monStand);
+
+                const monScreen = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.55, 0.04), new THREE.MeshStandardMaterial({ color: 0x0a1118, emissive: 0x00aaff, emissiveIntensity: 0.2 }));
+                monScreen.position.set(-2.2, 1.38, -3.38); this.scene.add(monScreen);
+                monScreen.userData = { type: 'computer', name: 'РАБОЧИЙ ТЕРМИНАЛ' };
+                this.interactables.push(monScreen);
+
+                this.pcGroup = new THREE.Group();
+                this.pcGroup.position.set(-1.0, 0.94, -3.2);
+                this.scene.add(this.pcGroup);
+
+                const builderTrigger = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), new THREE.MeshBasicMaterial({ visible: false }));
+                builderTrigger.position.set(-1.0, 1.3, -3.2);
+                this.scene.add(builderTrigger);
+                builderTrigger.userData = { type: 'builder', name: 'СБОРКА ПК' };
+                this.interactables.push(builderTrigger);
+
+                this.rgbLight = new THREE.PointLight(0x00ffcc, 0, 1.5);
+                this.rgbLight.position.set(-1.0, 1.3, -3.2);
+                this.scene.add(this.rgbLight);
+
+                this.updatePCVisuals();
+            },
+            updatePCVisuals() {
+                while(this.pcGroup.children.length > 0) { this.pcGroup.remove(this.pcGroup.children[0]); }
+                this.pcParts = {};
+
+                if(!State.pcOnDesk.case) return;
+
+                const caseMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.3, metalness: 0.8 });
+                const glassMat = new THREE.MeshPhysicalMaterial({ color: 0x88bbff, transparent: true, opacity: 0.2, roughness: 0.05, transmission: 0.5, depthWrite: false });
+                
+                const caseRight = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.8, 0.8), caseMat);
+                caseRight.position.set(0.19, 0.4, 0); caseRight.castShadow = true; this.pcGroup.add(caseRight);
+                const caseTop = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.02, 0.8), caseMat);
+                caseTop.position.set(0, 0.79, 0); caseTop.castShadow = true; this.pcGroup.add(caseTop);
+                const caseBottom = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.02, 0.8), caseMat);
+                caseBottom.position.set(0, 0.01, 0); caseBottom.castShadow = true; this.pcGroup.add(caseBottom);
+                const caseBack = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.8, 0.02), caseMat);
+                caseBack.position.set(0, 0.4, -0.39); caseBack.castShadow = true; this.pcGroup.add(caseBack);
+                const caseFront = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.8, 0.02), caseMat);
+                caseFront.position.set(0, 0.4, 0.39); caseFront.castShadow = true; this.pcGroup.add(caseFront);
+
+                const glass = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.76, 0.76), glassMat);
+                glass.position.set(-0.19, 0.4, 0);
+                this.pcGroup.add(glass);
+
+                if(State.pcOnDesk.mb) {
+                    const mbMesh = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.6, 0.6), new THREE.MeshStandardMaterial({ color: 0x1b4d2e }));
+                    mbMesh.position.set(0.16, 0.4, 0);
+                    this.pcGroup.add(mbMesh); this.pcParts.mb = mbMesh;
+                }
+
+                if(State.pcOnDesk.cpu && State.pcOnDesk.mb) {
+                    const cpuMesh = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.1, 0.1), new THREE.MeshStandardMaterial({ color: 0xaaaaaa, metalness: 0.9 }));
+                    cpuMesh.position.set(0.14, 0.45, 0);
+                    this.pcGroup.add(cpuMesh); this.pcParts.cpu = cpuMesh;
+                }
+
+                if(State.pcOnDesk.cooler && State.pcOnDesk.mb) {
+                    const coolMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.08, 16), new THREE.MeshStandardMaterial({ color: 0x333333 }));
+                    coolMesh.rotation.z = Math.PI / 2; coolMesh.position.set(0.08, 0.45, 0);
+                    this.pcGroup.add(coolMesh); this.pcParts.cooler = coolMesh;
+                }
+
+                if(State.pcOnDesk.ram && State.pcOnDesk.mb) {
+                    const ramMesh = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.15, 0.02), new THREE.MeshStandardMaterial({ color: 0x00ffcc, emissive: 0x003322 }));
+                    ramMesh.position.set(0.14, 0.45, 0.12);
+                    this.pcGroup.add(ramMesh); this.pcParts.ram = ramMesh;
+                }
+
+                if(State.pcOnDesk.gpu && State.pcOnDesk.gpu !== 'gpu_0' && State.pcOnDesk.mb) {
+                    const gpuMesh = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.08, 0.4), new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.5 }));
+                    gpuMesh.position.set(0.02, 0.28, -0.05);
+                    this.pcGroup.add(gpuMesh); this.pcParts.gpu = gpuMesh;
+                }
+
+                if(State.pcOnDesk.psu) {
+                    const psuMesh = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.16, 0.35), new THREE.MeshStandardMaterial({ color: 0x050505 }));
+                    psuMesh.position.set(0, 0.1, 0.18);
+                    this.pcGroup.add(psuMesh); this.pcParts.psu = psuMesh;
+                }
+
+                if(State.pcOnDesk.storage) {
+                    const ssdMesh = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.02, 0.12), new THREE.MeshStandardMaterial({ color: 0x333399 }));
+                    ssdMesh.position.set(0.1, 0.05, -0.2);
+                    this.pcGroup.add(ssdMesh); this.pcParts.storage = ssdMesh;
+                }
+            },
+            triggerInstallAnimation(type) {
+                if(this.pcParts[type]) {
+                    const mesh = this.pcParts[type];
+                    mesh.position.y += 0.5;
+                }
+            },
+            setPCRGB(active) {
+                if(this.rgbLight) {
+                    this.rgbLight.intensity = active ? 1.5 : 0;
+                }
+            },
+            checkCollision(pos) {
+                const playerBox = new THREE.Box3(new THREE.Vector3(pos.x - 0.3, 0, pos.z - 0.3), new THREE.Vector3(pos.x + 0.3, 2, pos.z + 0.3));
+                for(let i = 0; i < this.colliders.length; i++) { if(playerBox.intersectsBox(this.colliders[i])) return true; }
+                return false;
+            },
+            render() { 
+                if(this.rgbLight && this.rgbLight.intensity > 0) {
+                    this.rgbLight.color.setHSL((Date.now() * 0.001) % 1, 1, 0.5);
+                }
+                this.renderer.render(this.scene, this.camera); 
+            }
+        };
+
+        const Controls = {
+            locked: false, moveTouchId: null, moveOrigin: { x: 0, y: 0 }, moveVector: { x: 0, y: 0 },
+            lookTouchId: null, yaw: 0, pitch: 0, raycaster: new THREE.Raycaster(), centerPoint: new THREE.Vector2(0, 0), targetObject: null,
+            init() {
+                const moveZone = document.getElementById('move-zone'); const lookZone = document.getElementById('look-zone');
+                const joyBase = document.getElementById('joystick-base'); const joyThumb = document.getElementById('joystick-thumb');
+
+                moveZone.addEventListener('touchstart', (e) => {
+                    if(this.locked) return;
+                    for(let i=0; i<e.changedTouches.length; i++) {
+                        let touch = e.changedTouches[i];
+                        if(this.moveTouchId === null) {
+                            UI.init(); this.moveTouchId = touch.identifier; this.moveOrigin = { x: touch.clientX, y: touch.clientY };
+                            joyBase.style.display = 'block'; joyBase.style.left = (touch.clientX - 60) + 'px'; joyBase.style.top = (touch.clientY - 60) + 'px'; joyThumb.style.transform = `translate(0px, 0px)`;
+                        }
+                    }
+                });
+
+                moveZone.addEventListener('touchmove', (e) => {
+                    if(this.locked) return;
+                    for(let i=0; i<e.changedTouches.length; i++) {
+                        let touch = e.changedTouches[i];
+                        if(touch.identifier === this.moveTouchId) {
+                            let dx = touch.clientX - this.moveOrigin.x; let dy = touch.clientY - this.moveOrigin.y;
+                            let dist = Math.sqrt(dx*dx + dy*dy); let maxDist = 60;
+                            if(dist > maxDist) { dx = (dx / dist) * maxDist; dy = (dy / dist) * maxDist; }
+                            joyThumb.style.transform = `translate(${dx}px, ${dy}px)`;
+                            this.moveVector.x = dx / maxDist; this.moveVector.y = dy / maxDist;
+                        }
+                    }
+                });
+
+                const endMove = (e) => { for(let i=0; i<e.changedTouches.length; i++) { if(e.changedTouches[i].identifier === this.moveTouchId) { this.moveTouchId = null; this.moveVector = { x: 0, y: 0 }; joyBase.style.display = 'none'; } } };
+                moveZone.addEventListener('touchend', endMove); moveZone.addEventListener('touchcancel', endMove);
+
+                let lastLookX = 0, lastLookY = 0;
+                lookZone.addEventListener('touchstart', (e) => {
+                    if(this.locked) return;
+                    for(let i=0; i<e.changedTouches.length; i++) {
+                        let touch = e.changedTouches[i];
+                        if(this.lookTouchId === null) { UI.init(); this.lookTouchId = touch.identifier; lastLookX = touch.clientX; lastLookY = touch.clientY; }
+                    }
+                });
+
+                lookZone.addEventListener('touchmove', (e) => {
+                    if(this.locked) return;
+                    for(let i=0; i<e.changedTouches.length; i++) {
+                        let touch = e.changedTouches[i];
+                        if(touch.identifier === this.lookTouchId) {
+                            let dx = touch.clientX - lastLookX; let dy = touch.clientY - lastLookY;
+                            this.yaw -= dx * 0.005; this.pitch -= dy * 0.005;
+                            this.pitch = Math.max(-Math.PI/2.5, Math.min(Math.PI/2.5, this.pitch));
+                            lastLookX = touch.clientX; lastLookY = touch.clientY;
+                        }
+                    }
+                });
+
+                const endLook = (e) => { for(let i=0; i<e.changedTouches.length; i++) { if(e.changedTouches[i].identifier === this.lookTouchId) this.lookTouchId = null; } };
+                lookZone.addEventListener('touchend', endLook); lookZone.addEventListener('touchcancel', endLook);
+                
+                document.getElementById('btn-interact').addEventListener('click', () => { 
+                    if(this.targetObject && !this.locked) { 
+                        if(this.targetObject.userData.type === 'computer') { UI.openWindow('win-computer'); UI.switchComputerTab('orders'); } 
+                        else if(this.targetObject.userData.type === 'builder') { UI.openWindow('win-builder'); UI.renderBuilder(); } 
+                    } 
+                });
+                document.getElementById('btn-menu').addEventListener('click', () => { UI.openWindow('win-menu'); });
+            },
+            updateCamera() {
+                if(!Engine.camera || this.locked) return;
+                Engine.camera.rotation.order = 'YXZ'; Engine.camera.rotation.y = this.yaw; Engine.camera.rotation.x = this.pitch;
+
+                if(this.moveVector.x !== 0 || this.moveVector.y !== 0) {
+                    const speed = 0.08;
+                    const dir = new THREE.Vector3(this.moveVector.x, 0, this.moveVector.y).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.yaw);
+                    const newPos = Engine.camera.position.clone();
+                    newPos.x += dir.x * speed; newPos.z += dir.z * speed;
+                    if(!Engine.checkCollision(newPos) && newPos.x > -3.5 && newPos.x < 3.5 && newPos.z > -3.5 && newPos.z < 3.5) {
+                        Engine.camera.position.x = newPos.x; Engine.camera.position.z = newPos.z;
+                    }
+                }
+
+                this.raycaster.setFromCamera(this.centerPoint, Engine.camera);
+                const intersects = this.raycaster.intersectObjects(Engine.interactables);
+                if(intersects.length > 0 && intersects[0].distance < 2.5) {
+                    this.targetObject = intersects[0].object;
+                    document.getElementById('crosshair').classList.add('active');
+                    const btn = document.getElementById('btn-interact'); btn.style.display = 'block'; btn.innerText = this.targetObject.userData.name;
+                } else { 
+                    this.targetObject = null; document.getElementById('crosshair').classList.remove('active'); document.getElementById('btn-interact').style.display = 'none'; 
+                }
+            }
+        };
+
+        function gameLoop() { requestAnimationFrame(gameLoop); Controls.updateCamera(); Engine.render(); }
+
+        window.onload = () => { Game.init(); Engine.init(); Controls.init(); gameLoop(); };
+    </script>
+</body>
+</html>
